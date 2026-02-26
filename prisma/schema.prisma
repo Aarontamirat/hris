@@ -14,14 +14,46 @@ enum UserStatus {
 }
 
 model Role {
-  id          String   @id @default(cuid())
-  name        String   @unique @db.VarChar(64)
-  description String?  @db.VarChar(255)
-  users       User[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  deletedAt   DateTime?
+  id              String           @id @default(cuid())
+  name            String           @unique @db.VarChar(64)
+  description     String?          @db.VarChar(255)
+  users           User[]
+  rolePermissions RolePermission[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  deletedAt       DateTime?
 
+  @@index([deletedAt])
+}
+
+model Permission {
+  id              String           @id @default(cuid())
+  module          String           @db.VarChar(100)
+  action          String           @db.VarChar(50)
+  description     String?          @db.VarChar(255)
+  rolePermissions RolePermission[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  deletedAt       DateTime?
+
+  @@unique([module, action])
+  @@index([module])
+  @@index([deletedAt])
+}
+
+model RolePermission {
+  id           String     @id @default(cuid())
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  deletedAt    DateTime?
+
+  @@unique([roleId, permissionId])
+  @@index([roleId])
+  @@index([permissionId])
   @@index([deletedAt])
 }
 

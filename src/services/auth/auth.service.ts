@@ -9,6 +9,12 @@ import { loginSchema, registerSchema } from "@/schemas/auth";
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 15;
 const DEFAULT_ROLE = "EMPLOYEE";
+const ADMIN_ROLE = "ADMIN";
+
+const SYSTEM_PERMISSIONS = [
+  { module: "RBAC", action: "READ", description: "View roles and permissions" },
+  { module: "RBAC", action: "MANAGE", description: "Create roles/permissions and assign mappings" }
+];
 
 export class AuthService {
   static async register(payload: unknown, context: { ipAddress?: string; userAgent?: string }) {
@@ -21,10 +27,39 @@ export class AuthService {
       throw new AppError("Email already exists", 409, "EMAIL_ALREADY_EXISTS");
     }
 
-    const role = await prisma.role.upsert({
+    const usersCount = await prisma.user.count({ where: { deletedAt: null } });
+    const isFirstUser = usersCount === 0;
+
+    const employeeRole = await prisma.role.upsert({
       where: { name: DEFAULT_ROLE },
       update: {},
       create: { name: DEFAULT_ROLE, description: "Default employee role" }
+    });
+
+    const adminRole = await prisma.role.upsert({
+      where: { name: ADMIN_ROLE },
+      update: {},
+      create: { name: ADMIN_ROLE, description: "System administrator role" }
+    });
+
+    const permissions = await Promise.all(
+      SYSTEM_PERMISSIONS.map((permission: { module: string; action: string; description: string }) =>
+        prisma.permission.upsert({
+          where: {
+            module_action: {
+              module: permission.module,
+              action: permission.action
+            }
+          },
+          update: { description: permission.description },
+          create: permission
+        })
+      )
+    );
+
+    await prisma.rolePermission.createMany({
+      data: permissions.map((permission) => ({ roleId: adminRole.id, permissionId: permission.id })),
+      skipDuplicates: true
     });
 
     const created = await prisma.user.create({
@@ -33,7 +68,7 @@ export class AuthService {
         firstName: dto.firstName,
         lastName: dto.lastName,
         passwordHash: await hashPassword(dto.password),
-        roleId: role.id
+        roleId: isFirstUser ? adminRole.id : employeeRole.id
       },
       include: { role: true }
     });
